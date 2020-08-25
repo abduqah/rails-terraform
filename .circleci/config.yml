@@ -1,0 +1,135 @@
+version: 2
+
+references:
+
+base_image: &base_image hashicorp/terraform:0.12.29
+
+working_directory: &working_directory /home/circleci/uLeague
+
+default_config: &default_config
+  docker:
+    - image: *base_image
+  working_directory: *working_directory
+  environment:
+    BASH_ENV: /home/circleci/.bashrc
+    TF_IN_AUTOMATION: true
+    WORKING_DIRECTORY: *working_directory
+
+repo_cache_key: &repo_cache_key v1-repo-{{ .Branch }}-{{ .Revision }}
+
+restore_repo: &restore_repo
+  restore_cache:
+    key: *repo_cache_key
+
+save_repo: &save_repo
+  save_cache:
+    key: *repo_cache_key
+    paths:
+      - *working_directory
+      - /home/circleci/.bashrc
+
+set_terraform_environment: &set_terraform_environment
+    run:
+      name: set terraform environment
+      command: |
+        cd && touch $BASH_ENV
+        cd $WORKING_DIRECTORY
+    
+jobs:
+  terraform-init:
+    <<: *default_config
+    steps:
+      - checkout
+      - *set_terraform_environment
+      - run:
+          name: terraform fmt
+          command: |
+            mkdir -p workspace
+            cd terraform
+            echo "export TF_VAR_aws_resource_prefix=uleague-$CIRCLE_BRANCH" >> $BASH_ENV
+            echo "export TF_VAR_aws_resource_prefix_alphanumeric=uleague$CIRCLE_BRANCH" >> $BASH_ENV
+            source $BASH_ENV
+            terraform init -input=false
+            terraform fmt
+            terraform validate
+      - *save_repo
+
+  plan_apply:
+    <<: *default_config
+    steps:
+      - *restore_repo
+      - *set_terraform_environment
+      - run:
+          name: apply
+          command: |
+            cd terraform
+            source $BASH_ENV
+            terraform plan -out=$TF_VAR_aws_resource_prefix-plan -input=false
+            terraform apply -auto-approve $TF_VAR_aws_resource_prefix-plan
+            echo "export TF_VAR_repo_url=$(terraform output repo_url)" >> $BASH_ENV
+            echo "export public_ip=$(terraform output public_ip)" >> $BASH_ENV
+            echo "export db_port=$(terraform output db_port)" >> $BASH_ENV
+            echo "export redis_port=$(terraform output redis_port)" >> $BASH_ENV
+            echo "export db_address=$(terraform output db_address)" >> $BASH_ENV
+            echo "export redis_url=$(terraform output redis_url)" >> $BASH_ENV
+      - save_cache:
+          key: v1-repo-{{ .Branch }}-{{ .Revision }}-updated
+          paths:
+            - *working_directory
+            - /home/circleci/.bashrc
+
+  deployment:
+    machine: true
+    tty: true
+    working_directory: *working_directory
+    environment:
+      BASH_ENV: /home/circleci/.bashrc
+      WORKING_DIRECTORY: *working_directory
+
+    steps:
+      - *restore_repo
+      - *set_terraform_environment
+      - run:
+          name: "Build image and Push to repo"
+          command: |
+            source $BASH_ENV
+            echo install aws cli 2
+            curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+            unzip awscliv2.zip
+            sudo ./aws/install
+            aws --version
+            echo build and push image
+            aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $TF_VAR_repo_url
+            . ./set_env_vars.sh
+            cat .env
+            docker build -t $TF_VAR_aws_resource_prefix .
+            docker tag $TF_VAR_aws_resource_prefix:latest $TF_VAR_repo_url:latest
+            docker push $TF_VAR_repo_url:latest
+            
+
+  destroy:
+    <<: *default_config
+    steps:
+      - *restore_repo
+      - *set_terraform_environment
+      - run:
+          name: "Destruction of infrastructure"
+          command: |
+            cd terraform
+            terraform destroy -auto-approve
+
+workflows:
+  version: 2
+  build_deploy-terraform:
+    jobs:
+      - terraform-init:
+          filters:
+            branches:
+              only: 
+                - dev2
+      - plan_apply:
+          requires:
+            - terraform-init
+      - deployment:
+          requires:
+            - plan_apply
