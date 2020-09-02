@@ -4,6 +4,10 @@ output "rds_sg" {
   value = aws_security_group.rds_sg.id
 }
 
+output "cache_sg" {
+  value = aws_security_group.cache_sg.id
+}
+
 output "web_inbound_sg" {
   value = aws_security_group.web_inbound_sg.id
 }

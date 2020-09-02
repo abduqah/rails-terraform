@@ -53,6 +53,7 @@ module "nat" {
 module "cache_services" {
   source                 = "./cache_services"
   private_subnets        = module.subnets.private_subnet_ids
+  vpc_security_group_ids = [module.security_groups.cache_sg]
   aws_resource_prefix    = var.aws_resource_prefix
   elasticache_cluster_id = var.elasticache_cluster_id
   ec_instance_node_type  = var.ec_instance_node_type

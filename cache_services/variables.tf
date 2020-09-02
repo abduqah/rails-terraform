@@ -11,3 +11,7 @@ variable "ec_instance_node_type" {
 variable "private_subnets" {
   type = list(string)
 }
+
+variable "vpc_security_group_ids" {
+  type = list(string)
+}

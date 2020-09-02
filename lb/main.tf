@@ -17,6 +17,15 @@ resource "aws_lb_target_group" "tf_target_group" {
   lifecycle {
     create_before_destroy = true
   }
+  health_check {
+    healthy_threshold   = "2"
+    unhealthy_threshold = "6"
+    interval            = "30"
+    matcher             = "200,301,302"
+    path                = "/"
+    protocol            = "HTTP"
+    timeout             = "5"
+  }
 }
 
 resource "aws_lb_listener" "tf_listener" {

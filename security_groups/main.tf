@@ -21,7 +21,7 @@ resource "aws_security_group" "default" {
 resource "aws_security_group" "db_access_sg" {
   vpc_id      = var.vpc_id
   name        = "${var.aws_resource_prefix}-db-access-sg"
-  description = "Allow access to RDS"
+  description = "Allow access to RDS and Redis"
   tags = {
     Name = "${var.aws_resource_prefix}-db-access-sg"
   }
@@ -55,6 +55,32 @@ resource "aws_security_group" "rds_sg" {
   }
 }
 
+resource "aws_security_group" "cache_sg" {
+  name        = "${var.aws_resource_prefix}-cache-sg"
+  description = "${var.aws_resource_prefix} Redis Security Group"
+  vpc_id      = var.vpc_id
+  tags = {
+    Name = "${var.aws_resource_prefix}-cache-sg"
+  }// allows traffic from the SG itself
+  ingress {
+    from_port = 0
+    to_port = 0
+    protocol = "-1"
+    self = true
+  }//allow traffic for TCP 5432
+  ingress {
+    from_port = 6379
+    to_port = 6379
+    protocol = "tcp"
+    security_groups = [aws_security_group.db_access_sg.id]
+  }// outbound internet access
+  egress {
+    from_port = 0
+    to_port = 0
+    protocol = "-1"
+    cidr_blocks= ["0.0.0.0/0"]
+  }
+}
 
 resource "aws_security_group" "web_inbound_sg" {
   name        = "${var.aws_resource_prefix}-web-inbound-sg"
